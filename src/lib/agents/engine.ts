@@ -166,6 +166,7 @@ export class FlowEngine {
             responseText = node.data.waMessage || node.data.message || "Olá!";
           } else if (actionType === "ai") {
             const prompt = node.data.prompt || node.data.message || "";
+            const businessContext = JSON.stringify(agent.business_details || agent.config?.business_details || {});
             console.log(`[FLOW ENGINE] Chamando OpenAI para prompt: ${prompt}`);
             
             try {
@@ -173,6 +174,8 @@ export class FlowEngine {
                 model: "gpt-3.5-turbo",
                 messages: [
                   { role: "system", content: agent.system_prompt || "Você é um assistente prestativo." },
+                  { role: "system", content: `IDENTIDADE: Seu nome é ${agent.name}.` },
+                  { role: "system", content: `CONTEXTO DE NEGÓCIO (SERVIÇOS/REGRAS): ${businessContext}` },
                   { role: "system", content: `Instrução do Nó Atual: ${prompt}` },
                   ...session.messages.slice(-5)
                 ],
@@ -194,11 +197,16 @@ export class FlowEngine {
             nextNodeId = outboundEdges[0].target;
           } else if (outboundEdges.length > 1) {
             console.log("[FLOW ENGINE] Múltiplas rotas detectadas. Decidindo semânticamente...");
+            const businessContext = JSON.stringify(agent.business_details || agent.config?.business_details || {});
             const options = outboundEdges.map(e => ({ id: e.target, label: e.label || "Seguir fluxo" }));
             const decisionPrompt = `O usuário disse: "${userInput}". 
-            Com base na intenção dele, escolha a opção mais adequada entre:
+            Contexto da Empresa: ${businessContext}
+            
+            Com base na intenção dele, escolha a opção mais adequada entre as rotas de saída:
             ${options.map((o, i) => `${i}: ${o.label}`).join('\n')}
-            Responda APENAS o número da opção (ex: 0, 1) ou "STAY" se nenhuma for condizente.`;
+            
+            IMPORTANTE: Se a intenção do usuário for apenas tirar dúvidas sobre serviços, preços ou informações gerais que já constam no contexto acima, responda "STAY".
+            Responda APENAS o número da opção (ex: 0, 1) ou "STAY".`;
 
             try {
               const routeRes = await this.openai.chat.completions.create({
