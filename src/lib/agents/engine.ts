@@ -13,6 +13,7 @@ interface FlowEdge {
   target: string;
   sourceHandle?: string;
   targetHandle?: string;
+  label?: string;
 }
 
 interface FlowData {
@@ -184,8 +185,41 @@ export class FlowEngine {
 
           await this.sendWhatsApp(instanceName, session.remote_jid, responseText, evolutionApiUrl, evolutionApiKey);
           
-          const nextNodeId = this.getNextNodeId(nodeId, flow);
+          // --- ROTEAMENTO SEMÂNTICO INTELIGENTE ---
+          let nextNodeId = null;
+          const outboundEdges = flow.edges.filter(e => e.source === nodeId);
+          
+          if (outboundEdges.length === 1) {
+            nextNodeId = outboundEdges[0].target;
+          } else if (outboundEdges.length > 1) {
+            console.log("[FLOW ENGINE] Múltiplas rotas detectadas. Decidindo semânticamente...");
+            const options = outboundEdges.map(e => ({ id: e.target, label: e.label || "Seguir fluxo" }));
+            const decisionPrompt = `O usuário disse: "${userInput}". 
+            Com base na intenção dele, escolha a opção mais adequada entre:
+            ${options.map((o, i) => `${i}: ${o.label}`).join('\n')}
+            Responda APENAS o número da opção (ex: 0, 1) ou "STAY" se nenhuma for condizente.`;
+
+            try {
+              const routeRes = await this.openai.chat.completions.create({
+                model: "gpt-3.5-turbo",
+                messages: [{ role: "system", content: decisionPrompt }],
+                max_tokens: 5
+              });
+              const decision = routeRes.choices[0]?.message?.content?.trim() || "STAY";
+              if (decision !== "STAY" && !isNaN(parseInt(decision))) {
+                const idx = parseInt(decision);
+                if (options[idx]) nextNodeId = options[idx].id;
+              }
+            } catch (err) {
+              console.error("[FLOW ENGINE] Erro no roteamento semântico:", err);
+            }
+          }
+
           await this.updateSession(session.id, nextNodeId || nodeId, responseText);
+          
+          // Se houver troca de nó IMEDIATA (ex: para um nó de ação), podemos optar por executar o próximo passo aqui
+          // Mas por design de chat, geralmente esperamos o próximo input do usuário.
+          // Exceto se for um nó de "Mensagem" fixa ou similar.
           return;
         }
 

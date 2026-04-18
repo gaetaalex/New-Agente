@@ -230,45 +230,81 @@ export default function NewAgentPage() {
       
       const companyId = profileCompanyId;
 
-      const defaultNodes = [
-        { id: 'start', type: 'initial', position: { x: 400, y: 100 }, data: { label: 'Início', nodeId: 'start' } },
-        { id: 'welcome', type: 'action', position: { x: 360, y: 250 }, data: { 
-          label: 'Boas-vindas', 
-          preview: `Olá! Eu sou ${formData.name}. Como posso ajudar?`,
-          type: 'AI Response', color: 'bg-primary', nodeId: 'ai'
-        }}
-      ];
+      // --- LÓGICA DE GERAÇÃO DE FLUXO ROBUSTO (Mestre Inteligente) ---
+      let nodes: any[] = [];
+      let edges: any[] = [];
 
-      const defaultEdges = [{ id: 'e-start-welcome', source: 'start', target: 'welcome', animated: true }];
-
-      // Pegar fluxo do template se existir
-      const baseNodes = selectedTemplate?.flow?.nodes || defaultNodes;
-      const baseEdges = selectedTemplate?.flow?.edges || defaultEdges;
-
-      // Injetar respostas e identidade do agente nos nós de IA
-      const nodes = baseNodes.map((node: any) => {
-        if (node.id === 'greeting' || node.id === '2' || node.data?.label?.toLowerCase().includes('saudação')) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              preview: `Olá! Sou a ${formData.name}. Oferecemos serviços como ${formData.answers[1] || 'estética avançada'}. Como posso ajudar?`,
-              prompt: `Você é o ${formData.name}. Sua persona é ${formData.tone || 'profissional'}. Atue conforme o template original.`,
-              systemMessage: `Você é o ${formData.name}. Sua persona é ${formData.tone || 'profissional'}. Atue conforme o template original.`
+      if (builderMode === 'prompt' || !selectedTemplate) {
+        // Gerar um fluxo "Cérebro IA" completo por padrão
+        nodes = [
+          { 
+            id: 'start', 
+            type: 'initial', 
+            position: { x: 400, y: 0 }, 
+            data: { label: 'Início', nodeId: 'start' } 
+          },
+          { 
+            id: 'brain', 
+            type: 'ai_response', 
+            position: { x: 350, y: 150 }, 
+            data: { 
+              label: 'Cérebro do Agente', 
+              sublabel: 'AÇÃO • AI RESPONSE',
+              preview: `Olá! Eu sou ${formData.name}. Como posso ajudar?`,
+              prompt: formData.system_prompt,
+              type: 'AI Response', nodeId: 'ai'
             }
-          };
-        }
-        if (node.data?.nodeId === 'ai' || node.data?.prompt) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              prompt: (node.data.prompt || '').replace(/Julia/g, formData.name).replace(/assistente/g, `o assistente ${formData.name}`)
+          },
+          { 
+            id: 'booking', 
+            type: 'action', 
+            position: { x: 150, y: 400 }, 
+            data: { 
+              label: 'Agendamento', 
+              sublabel: 'AÇÃO • AVAILABILITY',
+              type: 'availability', nodeId: 'availability',
+              color: 'bg-green-500'
             }
-          };
-        }
-        return node;
-      });
+          },
+          { 
+            id: 'transfer', 
+            type: 'action', 
+            position: { x: 550, y: 400 }, 
+            data: { 
+              label: 'Falar com Humano', 
+              sublabel: 'AÇÃO • TRANSFER',
+              type: 'transfer', nodeId: 'transfer',
+              color: 'bg-orange-500'
+            }
+          }
+        ];
+
+        edges = [
+          { id: 'e-start-brain', source: 'start', target: 'brain', animated: true },
+          { id: 'e-brain-booking', source: 'brain', target: 'booking', animated: true, label: 'agendamento' },
+          { id: 'e-brain-transfer', source: 'brain', target: 'transfer', animated: true, label: 'humano' }
+        ];
+      } else {
+        // Fluxo baseado em Template
+        const baseNodes = selectedTemplate?.flow?.nodes || [];
+        const baseEdges = selectedTemplate?.flow?.edges || [];
+
+        nodes = baseNodes.map((node: any) => {
+          if (node.id === 'greeting' || node.id === '2' || node.data?.label?.toLowerCase().includes('saudação')) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                preview: `Olá! Sou a ${formData.name}. Como posso ajudar?`,
+                prompt: formData.system_prompt,
+                systemMessage: formData.system_prompt
+              }
+            };
+          }
+          return node;
+        });
+        edges = baseEdges;
+      }
 
       const { error: saveError } = await supabase
         .from("na_agents")
@@ -277,13 +313,13 @@ export default function NewAgentPage() {
           name: formData.name,
           role: selectedTemplate?.defaultData?.role || 'Assistente',
           field: selectedTemplate?.defaultData?.field || formData.category,
-          system_prompt: selectedTemplate?.defaultData?.system_prompt || `Você é o ${formData.name}.`,
+          system_prompt: formData.system_prompt || `Você é o ${formData.name}.`,
           personalities: formData.tone ? [formData.tone] : [],
           config: formData,
           is_active: true,
           flow: { 
             nodes: nodes, 
-            edges: baseEdges 
+            edges: edges 
           }
         }]);
 
