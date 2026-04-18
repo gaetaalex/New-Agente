@@ -354,6 +354,77 @@ export default function NewAgentPage() {
     );
   }
 
+  // ========= MODO PROMPT (SIMPLIFICADO) =========
+  if (builderMode === 'prompt') {
+    return (
+      <div className="min-h-screen bg-background p-6 md:p-12 text-foreground">
+        <div className="max-w-3xl mx-auto space-y-10">
+          <header className="flex justify-between items-center">
+            <button 
+              onClick={() => setBuilderMode(null)}
+              className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-all font-black uppercase tracking-widest text-[9px] italic"
+            >
+              <ArrowLeft className="w-4 h-4" /> Cancelar
+            </button>
+            <div className="flex items-center gap-2">
+              <Bot className="w-5 h-5 text-primary" />
+              <span className="font-black text-xs uppercase tracking-widest">Criação Instantânea</span>
+            </div>
+          </header>
+
+          <div className="space-y-4">
+             <h1 className="text-4xl font-black italic tracking-tighter">Descreva seu Agente</h1>
+             <p className="text-muted-foreground text-sm font-medium">Diga quem ele é e o que ele deve fazer. Nossa IA cuidará da lógica.</p>
+          </div>
+
+          <div className="space-y-8 bg-muted p-8 md:p-12 rounded-[3.5rem] border border-border shadow-2xl">
+             <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase tracking-widest text-primary italic ml-4">Nome do Agente</label>
+                <input 
+                  type="text"
+                  placeholder="Ex: Recepcionista Clínica"
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="w-full bg-background border border-border rounded-2xl py-5 px-8 text-sm font-bold outline-none focus:border-primary transition-all"
+                />
+             </div>
+
+             <div className="space-y-4">
+                <div className="flex justify-between items-center ml-4">
+                   <label className="text-[10px] font-black uppercase tracking-widest text-primary italic">Seu Script / Instruções</label>
+                   <button 
+                     onClick={() => handleAIFill('system_prompt')}
+                     disabled={isAILoading}
+                     className="flex items-center gap-2 px-3 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+                   >
+                     {isAILoading ? <RefreshCcw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                     Mágica IA✨ (Gerar Script)
+                   </button>
+                </div>
+                <textarea 
+                  rows={10}
+                  value={formData.system_prompt}
+                  onChange={(e) => setFormData({...formData, system_prompt: e.target.value})}
+                  placeholder="Ex: Crie um agente para uma clínica de estética que tira dúvidas sobre botox e preenchimento, e tenta agendar uma avaliação gratuita..."
+                  className="w-full bg-background border border-border rounded-[2.5rem] py-6 px-8 text-sm font-medium leading-relaxed outline-none focus:border-primary transition-all resize-none shadow-inner"
+                />
+             </div>
+
+             <div className="pt-4">
+                <button 
+                  onClick={handleSave}
+                  disabled={loading || !formData.name || !formData.system_prompt}
+                  className="w-full py-5 bg-green-500 text-white rounded-[1.5rem] font-black italic text-lg uppercase tracking-tight shadow-xl shadow-green-500/20 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:grayscale"
+                >
+                  {loading ? "Criando Agente..." : "Finalizar e Ativar Agente"}
+                </button>
+             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex text-foreground font-sans">
       <div className="w-64 border-r border-border p-6 hidden lg:block bg-muted/30">
@@ -489,40 +560,40 @@ export default function NewAgentPage() {
                                </button>
                              </div>
                             <textarea 
-                              rows={3}
-                              className="w-full bg-background border border-border rounded-[2rem] p-6 text-sm outline-none focus:border-primary transition-all resize-none shadow-inner"
-                              placeholder="Ex: Ela será uma recepcionista atenciosa que foca em agendar consultas..."
-                              value={formData.persona}
-                              onChange={(e) => setFormData({...formData, persona: e.target.value})}
+                               rows={3}
+                               className="w-full bg-background border border-border rounded-[2rem] p-6 text-sm outline-none focus:border-primary transition-all resize-none shadow-inner"
+                               placeholder="Ex: Ela será uma recepcionista atenciosa que foca em agendar consultas..."
+                               value={formData.persona}
+                               onChange={(e) => setFormData({...formData, persona: e.target.value})}
                             />
                          </div>
 
                          <div className="space-y-6">
                            <h3 className="text-xl font-bold italic tracking-tight">Perguntas Rápidas</h3>
                            <div className="grid gap-6">
-                              {(WIZARD_QUESTIONS[formData.category] || WIZARD_QUESTIONS.default).map((q, i) => (
-                                <div key={`${formData.category}-q-${i}`} className="space-y-3">
-                                   <div className="flex justify-between items-center px-1">
-                                      <label className="text-[10px] font-black uppercase tracking-widest text-primary italic opacity-60">{q}</label>
-                                      <button 
-                                        type="button"
-                                        onClick={() => handleAIFill(`detail:${q}`)}
-                                        disabled={isAILoading}
-                                        className="text-[8px] font-black uppercase tracking-widest text-primary/40 hover:text-primary transition-all flex items-center gap-1"
-                                      >
-                                        <Sparkles className="w-2.5 h-2.5" /> Sugerir
-                                      </button>
-                                   </div>
-                                   <input 
-                                     type="text"
-                                     value={formData.business_details[q] || ''} className="w-full bg-background border border-border rounded-2xl p-4 text-sm outline-none focus:border-primary transition-all shadow-sm"
-                                     onChange={(e) => {
-                                       const details = { ...formData.business_details, [q]: e.target.value };
-                                       setFormData({...formData, business_details: details});
-                                     }}
-                                   />
-                                </div>
-                              ))}
+                               {(WIZARD_QUESTIONS[formData.category] || WIZARD_QUESTIONS.default).map((q, i) => (
+                                 <div key={`${formData.category}-q-${i}`} className="space-y-3">
+                                    <div className="flex justify-between items-center px-1">
+                                       <label className="text-[10px] font-black uppercase tracking-widest text-primary italic opacity-60">{q}</label>
+                                       <button 
+                                         type="button"
+                                         onClick={() => handleAIFill(`detail:${q}`)}
+                                         disabled={isAILoading}
+                                         className="text-[8px] font-black uppercase tracking-widest text-primary/40 hover:text-primary transition-all flex items-center gap-1"
+                                       >
+                                         <Sparkles className="w-2.5 h-2.5" /> Sugerir
+                                       </button>
+                                    </div>
+                                    <input 
+                                      type="text"
+                                      value={formData.business_details[q] || ''} className="w-full bg-background border border-border rounded-2xl p-4 text-sm outline-none focus:border-primary transition-all shadow-sm"
+                                      onChange={(e) => {
+                                        const details = { ...formData.business_details, [q]: e.target.value };
+                                        setFormData({...formData, business_details: details});
+                                      }}
+                                    />
+                                 </div>
+                               ))}
                            </div>
                          </div>
                        </motion.div>

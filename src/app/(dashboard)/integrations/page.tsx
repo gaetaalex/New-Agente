@@ -238,8 +238,14 @@ export default function IntegrationsPage() {
         body: JSON.stringify({
           url: vercelUrl,
           enabled: true,
-          webhook_by_events: false,
-          events: ["MESSAGES_UPSERT"]
+          webhook_by_events: true,
+          events: [
+            "MESSAGES_UPSERT",
+            "MESSAGES_UPDATE",
+            "MESSAGES_DELETE",
+            "SEND_MESSAGE",
+            "CONNECTION_UP"
+          ]
         })
       });
 
@@ -334,8 +340,14 @@ export default function IntegrationsPage() {
         body: JSON.stringify({
           url: vercelUrl,
           enabled: true,
-          webhook_by_events: false,
-          events: ["MESSAGES_UPSERT"]
+          webhook_by_events: true,
+          events: [
+            "MESSAGES_UPSERT",
+            "MESSAGES_UPDATE",
+            "MESSAGES_DELETE",
+            "SEND_MESSAGE",
+            "CONNECTION_UP"
+          ]
         })
       });
 
