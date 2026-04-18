@@ -155,6 +155,7 @@ export class FlowEngine {
         break;
       }
 
+      case "ai_response": 
       case "action": {
         const actionType = node.data.nodeId;
         
