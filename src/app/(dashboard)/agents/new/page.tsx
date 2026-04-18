@@ -379,7 +379,28 @@ export default function NewAgentPage() {
 
           <div className="space-y-8 bg-muted p-8 md:p-12 rounded-[3.5rem] border border-border shadow-2xl">
              <div className="space-y-4">
-                <label className="text-[10px] font-black uppercase tracking-widest text-primary italic ml-4">Nome do Agente</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-primary italic ml-4">1. Escolha o Nicho (Tipo de Negócio)</label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                   {AGENT_TEMPLATES.map((tmpl) => (
+                     <button
+                       key={tmpl.id}
+                       onClick={() => setFormData({ ...formData, category: tmpl.id })}
+                       className={cn(
+                         "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2",
+                         formData.category === tmpl.id 
+                           ? "bg-primary/10 border-primary text-primary shadow-lg scale-105" 
+                           : "bg-background border-border text-muted-foreground hover:border-primary/30"
+                       )}
+                     >
+                       <span className="text-2xl">{tmpl.icon}</span>
+                       <span className="text-[10px] font-bold uppercase tracking-tighter">{tmpl.name}</span>
+                     </button>
+                   ))}
+                </div>
+             </div>
+
+             <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase tracking-widest text-primary italic ml-4">2. Nome do Agente</label>
                 <input 
                   type="text"
                   placeholder="Ex: Recepcionista Clínica"
@@ -391,9 +412,15 @@ export default function NewAgentPage() {
 
              <div className="space-y-4">
                 <div className="flex justify-between items-center ml-4">
-                   <label className="text-[10px] font-black uppercase tracking-widest text-primary italic">Seu Script / Instruções</label>
+                   <label className="text-[10px] font-black uppercase tracking-widest text-primary italic">3. Seu Script / Instruções</label>
                    <button 
-                     onClick={() => handleAIFill('system_prompt')}
+                     onClick={() => {
+                        if (!formData.category) {
+                          alert("Por favor, selecione um nicho primeiro.");
+                          return;
+                        }
+                        handleAIFill('system_prompt');
+                     }}
                      disabled={isAILoading}
                      className="flex items-center gap-2 px-3 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
                    >
@@ -402,7 +429,7 @@ export default function NewAgentPage() {
                    </button>
                 </div>
                 <textarea 
-                  rows={10}
+                  rows={8}
                   value={formData.system_prompt}
                   onChange={(e) => setFormData({...formData, system_prompt: e.target.value})}
                   placeholder="Ex: Crie um agente para uma clínica de estética que tira dúvidas sobre botox e preenchimento, e tenta agendar uma avaliação gratuita..."
