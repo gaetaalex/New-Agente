@@ -732,6 +732,17 @@ function FlowEditor({ params }: { params: Promise<{ id: string }> }) {
                                               <option value="financeiro">Financeiro</option>
                                             </select>
                                          </div>
+
+                                         <div className="space-y-2">
+                                            <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground block ml-2">Nome da Empresa / Barbearia</label>
+                                            <input 
+                                              type="text" 
+                                              placeholder="Ex: Barbearia Gaeta" 
+                                              className="w-full bg-muted/30 border border-border rounded-2xl py-3.5 px-5 text-xs font-bold text-foreground outline-none focus:border-emerald-500/40"
+                                              defaultValue={currentNode.data.companyName as string || ''}
+                                              onChange={(e) => setNodes(nds => nds.map(n => n.id === currentNode.id ? { ...n, data: { ...n.data, companyName: e.target.value } } : n))}
+                                            />
+                                         </div>
                                       </div>
                                     )}
 
@@ -769,6 +780,30 @@ function FlowEditor({ params }: { params: Promise<{ id: string }> }) {
                                          <div className="space-y-2">
                                             <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground block ml-2">Descrição da Cobrança</label>
                                             <input type="text" placeholder="Ex: Pagamento do Serviço" className="w-full bg-muted/30 border border-border rounded-2xl py-3.5 px-5 text-xs font-bold text-foreground outline-none focus:border-sky-500/40" />
+                                         </div>
+
+                                         <div className="space-y-4">
+                                            <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground block ml-2">Horário de Funcionamento</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="space-y-1">
+                                                    <span className="text-[8px] text-muted-foreground uppercase opacity-50 ml-1">Início</span>
+                                                    <input 
+                                                        type="time" 
+                                                        className="w-full bg-muted/30 border border-border rounded-xl py-2 px-3 text-xs font-bold text-foreground outline-none focus:border-emerald-500/30 transition-colors" 
+                                                        defaultValue={currentNode.data.workStart as string || '09:00'} 
+                                                        onChange={(e) => setNodes(nds => nds.map(n => n.id === currentNode.id ? { ...n, data: { ...n.data, workStart: e.target.value } } : n))}
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <span className="text-[8px] text-muted-foreground uppercase opacity-50 ml-1">Fim</span>
+                                                    <input 
+                                                        type="time" 
+                                                        className="w-full bg-muted/30 border border-border rounded-xl py-2 px-3 text-xs font-bold text-foreground outline-none focus:border-emerald-500/30 transition-colors" 
+                                                        defaultValue={currentNode.data.workEnd as string || '18:00'} 
+                                                        onChange={(e) => setNodes(nds => nds.map(n => n.id === currentNode.id ? { ...n, data: { ...n.data, workEnd: e.target.value } } : n))}
+                                                    />
+                                                </div>
+                                            </div>
                                          </div>
                                        </div>
                                      )}

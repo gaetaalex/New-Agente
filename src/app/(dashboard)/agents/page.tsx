@@ -44,6 +44,37 @@ export default function AgentsPage() {
     is_active: true
   });
 
+  const [isAILoading, setIsAILoading] = useState(false);
+
+  const handleAIFill = async () => {
+    if (!editingAgent?.field) {
+      alert("Nicho não identificado neste agente.");
+      return;
+    }
+
+    setIsAILoading(true);
+    try {
+      const response = await fetch('/api/ai/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          niche: editingAgent.field,
+          agentName: formData.name
+        })
+      });
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      setFormData(prev => ({ ...prev, system_prompt: data.system_prompt }));
+    } catch (err: any) {
+      console.error("Erro no preenchimento IA:", err);
+      alert("Falha ao gerar sugestão: " + err.message);
+    } finally {
+      setIsAILoading(false);
+    }
+  };
+
   const openEditModal = (agent: any) => {
     setEditingAgent(agent);
     setFormData({
@@ -250,15 +281,26 @@ export default function AgentsPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="glass p-6 rounded-3xl border border-border hover:border-primary/50 transition-all group flex flex-col justify-between"
+              className={`glass p-6 rounded-3xl border ${agent.is_active ? 'border-primary/50' : 'border-border'} hover:border-primary/80 transition-all group flex flex-col justify-between`}
             >
               <div>
                 <div className="flex justify-between items-start mb-6">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center text-white shadow-lg overflow-hidden relative">
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br transition-all ${agent.is_active ? 'from-primary to-purple-500' : 'from-gray-400 to-gray-600'} flex items-center justify-center text-white shadow-lg overflow-hidden relative`}>
                     <Bot className="w-6 h-6 relative z-10" />
                     <div className="absolute inset-0 bg-black/20" />
                   </div>
                   <div className="flex gap-2">
+                    <button 
+                      onClick={async () => {
+                        const newStatus = !agent.is_active;
+                        const { error } = await supabase.from('na_agents').update({ is_active: newStatus }).eq('id', agent.id);
+                        if (!error) fetchAgents();
+                      }}
+                      className={`p-2 rounded-lg transition-colors border border-border flex items-center gap-2 text-xs font-bold ${agent.is_active ? 'bg-amber-500/10 text-amber-500 hover:bg-amber-500/20' : 'bg-green-500/10 text-green-500 hover:bg-green-500/20'}`}
+                    >
+                      {agent.is_active ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      {agent.is_active ? 'Pausar' : 'Ativar'}
+                    </button>
                     <button 
                       onClick={() => openEditModal(agent)}
                       className="p-2 hover:bg-muted rounded-lg transition-colors border border-border text-muted-foreground hover:text-primary"
@@ -276,7 +318,7 @@ export default function AgentsPage() {
 
                 <div className="flex items-center gap-2 mb-2">
                   <h3 className="text-lg font-bold">{agent.name}</h3>
-                  <div className={`w-2 h-2 rounded-full ${agent.is_active ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                  <div className={`w-2 h-2 rounded-full ${agent.is_active ? 'bg-green-500 animate-pulse' : 'bg-red-200'}`} />
                 </div>
                 <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed mb-6">
                   {agent.system_prompt || "Sem prompt configurado."}

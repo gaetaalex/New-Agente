@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import OpenAI from 'openai';
+import { FlowEngine } from '@/lib/agents/engine';
 
 export async function POST(req: Request) {
   try {
@@ -11,89 +12,78 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log('[EVOLUTION WEBHOOK] Recebido:', JSON.stringify(body, null, 2));
 
-    // A Evolution API envia mensagens diferentes. Vamos focar apenas nas mensagens CRIAÇÃO
-    if (body.event !== 'messages.upsert' || !body.data?.messages?.[0]) {
-      return NextResponse.json({ message: 'Evento ignorado' });
-    }
-
-    const message = body.data.messages[0];
-    const instanceName = body.instance; // Geralmente vem na raiz do payload ou no header
+    // 1. Validar Mensagem
+    const message = body.data?.messages?.[0] || body.data;
+    const instanceName = body.instance;
+    const sender = body.sender;
     
-    // Ignorar mensagens enviadas por nós mesmos (ou outros bots da conta)
-    if (message.key.fromMe) {
-      return NextResponse.json({ message: 'Mensagem enviada por mim, ignorada' });
+    await supabase.from('na_debug_logs').insert({
+       event_type: 'webhook_step',
+       payload: { step: '1_admission', instance: instanceName, sender, fromMe: message.key?.fromMe, source: message.source }
+    });
+
+    if (!message || !message.key) return NextResponse.json({ message: 'Sem mensagem' });
+
+    // Travas Anti-Loop e Sistema
+    if (message.key.fromMe || sender?.includes(body.instanceId) || message.source === 'web') {
+       return NextResponse.json({ message: 'Ignorada (Self/System)' });
     }
 
-    // Identificar tipo de mensagem e extrair o texto
-    let textMessage = '';
-    
-    if (message.message?.conversation) {
-      textMessage = message.message.conversation;
-    } else if (message.message?.extendedTextMessage?.text) {
-      textMessage = message.message.extendedTextMessage.text;
+    // 2. Extrair Texto
+    const text = message.message?.conversation || 
+                 message.message?.extendedTextMessage?.text || 
+                 message.message?.buttonsResponseMessage?.selectedButtonId ||
+                 "";
+
+    if (!text && !message.message?.imageMessage) {
+       return NextResponse.json({ message: 'Sem conteúdo textual' });
     }
 
-    if (!textMessage) {
-      return NextResponse.json({ message: 'Não é mensagem de texto, ignorada' });
-    }
-
-    const remoteJid = message.key.remoteJid; // número do cliente
-    console.log(`[EVOLUTION WEBHOOK] Instância: ${instanceName} | Usuário: ${remoteJid} | Mensagem: ${textMessage}`);
-
-    // ==========================================
-    // 1. Encontrar o company_id pela instância
-    // ==========================================
-    const { data: integrations, error: intError } = await supabase
+    // 3. Buscar Integração e Agente
+    const { data: integration } = await supabase
       .from('na_integrations')
-      .select('company_id, config')
-      .eq('type', 'whatsapp_evolution')
-      .eq('instance_name', instanceName);
-
-    if (intError || !integrations || integrations.length === 0) {
-      console.error('[WEBHOOK ERRO] Instância não encontrada nas integrações:', instanceName);
-      return NextResponse.json({ error: 'Instância não registrada' }, { status: 404 });
-    }
-
-    // Assumir a primeira (deve ser única)
-    const integration = integrations[0];
-    const companyId = integration.company_id;
-    const evolutionApiUrl = integration.config?.api_url?.replace(/\/$/, "");
-    const evolutionApiKey = integration.config?.api_key;
-
-    if (!evolutionApiUrl || !evolutionApiKey) {
-      console.error('[WEBHOOK ERRO] Faltam url ou key na configuração da integração');
-      return NextResponse.json({ error: 'Configuração Incompleta' }, { status: 500 });
-    }
-
-    // ==========================================
-    // 2. Encontrar o Agente ativo dessa empresa
-    // ==========================================
-    const { data: agent, error: agentError } = await supabase
-      .from('na_agents')
-      .select('id, name, system_prompt')
-      .eq('company_id', companyId)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .select('*')
+      .eq('instance_name', instanceName)
       .single();
-
-    if (agentError || !agent) {
-      console.warn('[WEBHOOK] Nenhum agente ativo encontrado para a empresa:', companyId);
-      // Aqui poderíamos não responder nada, para não atrapalhar atendimentos humanos
-      return NextResponse.json({ message: 'Nenhum agente ativo' });
+    
+    if (!integration) {
+       await supabase.from('na_debug_logs').insert({
+          event_type: 'webhook_step',
+          payload: { step: 'error_no_integration', instance: instanceName }
+       });
+       return NextResponse.json({ message: 'Instância não encontrada no banco' });
     }
 
-    // ==========================================
-    // 3. Processar mensagem com o Motor de Fluxos (FlowEngine)
-    // ==========================================
-    const { FlowEngine } = require('@/lib/agents/engine');
+    const { data: agent } = await supabase
+      .from('na_agents')
+      .select('*')
+      .eq('company_id', integration.company_id)
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!agent) {
+       return NextResponse.json({ message: 'Agente não configurado' });
+    }
+
+    // 4. Iniciar Processamento
+    await supabase.from('na_debug_logs').insert({
+       event_type: 'webhook_step',
+       payload: { step: '2_processing_start', agent_id: agent.id, text }
+    });
+
     const engine = new FlowEngine();
+    
+    const evolutionApiUrl = (integration.config?.api_url || "").trim().replace(/\/$/, "");
+    const evolutionApiKey = (integration.config?.api_key || "").trim();
 
     await engine.processMessage(
-      companyId,
+      integration.company_id,
       agent.id,
-      remoteJid,
-      textMessage,
+      message.key.remoteJid,
+      text,
+      agent.flow,
       instanceName,
       evolutionApiUrl,
       evolutionApiKey
@@ -108,6 +98,17 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error('[WEBHOOK EXCEPTION]', error);
+    
+    // Salvar erro no banco para diagnóstico
+    await supabase.from('na_debug_logs').insert({
+       event_type: 'error',
+       payload: {
+         message: error.message,
+         stack: error.stack,
+         cause: error.cause
+       }
+    });
+
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -225,7 +225,25 @@ export default function IntegrationsPage() {
       // Salvar configuração parcial
       await saveIntegration("whatsapp_evolution", "pending", waConfig, waConfig.instance_name);
 
-      // 2. Conectar e buscar QR Code
+      // 2. Configurar Webhook na Evolution para apontar para a Vercel
+      const vercelUrl = "https://mercado-agentes-clone.vercel.app/api/evolution/webhook";
+      console.log("[Evolution] Configurando Webhook:", vercelUrl);
+      
+      await proxyEvolutionFetch(baseUrl, `/webhook/set/${waConfig.instance_name}`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "apikey": waConfig.api_key 
+        },
+        body: JSON.stringify({
+          url: vercelUrl,
+          enabled: true,
+          webhook_by_events: false,
+          events: ["MESSAGES_UPSERT"]
+        })
+      });
+
+      // 3. Conectar e buscar QR Code
       await fetchQRCode(baseUrl);
 
     } catch (err: any) {
@@ -299,6 +317,36 @@ export default function IntegrationsPage() {
     setQrCode(null);
     setWaStep("connected");
     await saveIntegration("whatsapp_evolution", "connected", waConfig, waConfig.instance_name);
+  };
+
+  const handleSyncWebhook = async () => {
+    setWaLoading(true);
+    try {
+      const baseUrl = waConfig.api_url.replace(/\/$/, "");
+      const vercelUrl = "https://mercado-agentes-clone.vercel.app/api/evolution/webhook";
+      
+      const resServer = await proxyEvolutionFetch(baseUrl, `/webhook/set/${waConfig.instance_name}`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "apikey": waConfig.api_key 
+        },
+        body: JSON.stringify({
+          url: vercelUrl,
+          enabled: true,
+          webhook_by_events: false,
+          events: ["MESSAGES_UPSERT"]
+        })
+      });
+
+      if (!resServer.success) throw new Error(resServer.error);
+      alert("Webhook sincronizado com sucesso! Seu WhatsApp agora está ligado à Vercel.");
+      setShowWAModal(false);
+    } catch (err: any) {
+      setWaError("Erro ao sincronizar: " + err.message);
+    } finally {
+      setWaLoading(false);
+    }
   };
 
   const handleDisconnectWA = async () => {
@@ -715,10 +763,12 @@ export default function IntegrationsPage() {
 
                     <div className="pt-2 flex gap-2">
                       <button
-                        onClick={() => { setShowWAModal(false); }}
-                        className="flex-1 py-3 bg-[#25D366] text-white rounded-xl text-xs font-bold hover:opacity-90 transition-all shadow-lg shadow-[#25D366]/20"
+                        onClick={handleSyncWebhook}
+                        disabled={waLoading}
+                        className="flex-1 py-3 bg-[#25D366] text-white rounded-xl text-xs font-bold hover:opacity-90 transition-all shadow-lg shadow-[#25D366]/20 flex items-center justify-center gap-2"
                       >
-                        Concluído
+                        {waLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        Sincronizar e Concluir
                       </button>
                       <button
                         onClick={handleDisconnectWA}

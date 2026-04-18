@@ -130,6 +130,67 @@ export default function NewAgentPage() {
     answers: []
   });
 
+  const [isAILoading, setIsAILoading] = useState(false);
+
+  const handleAIFill = async (field?: string) => {
+    if (!formData.category) {
+      alert("Por favor, selecione um nicho primeiro.");
+      return;
+    }
+
+    setIsAILoading(true);
+    try {
+      const questions = WIZARD_QUESTIONS[formData.category] || WIZARD_QUESTIONS.default;
+      
+      // Se for um campo específico (ex: detail:Como o paciente...)
+      const isSpecificField = field?.startsWith('detail:');
+      const targetDetail = isSpecificField ? field?.split('detail:')[1] : null;
+
+      const response = await fetch('/api/ai/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          niche: formData.category,
+          questions: targetDetail ? [targetDetail] : questions,
+          agentName: formData.name,
+          specificField: targetDetail ? 'business_details' : field
+        })
+      });
+
+      if (!response.ok) throw new Error('Erro na sugestão da IA');
+      
+      const data = await response.json();
+
+      if (targetDetail) {
+        // Atualizar apenas o detalhe específico
+        setFormData((prev: any) => ({
+          ...prev,
+          business_details: {
+            ...prev.business_details,
+            [targetDetail]: data.business_details?.[targetDetail] || data[targetDetail] || ""
+          }
+        }));
+      } else if (field === 'persona') {
+        setFormData((prev: any) => ({ ...prev, persona: data.persona }));
+      } else if (field === 'system_prompt') {
+        setFormData((prev: any) => ({ ...prev, system_prompt: data.system_prompt }));
+      } else {
+        // Preenchimento global
+        setFormData((prev: any) => ({
+          ...prev,
+          persona: data.persona || prev.persona,
+          system_prompt: data.system_prompt || prev.system_prompt,
+          business_details: { ...prev.business_details, ...data.business_details }
+        }));
+      }
+    } catch (err: any) {
+      console.error("Erro AI:", err);
+      alert("Falha ao gerar sugestão da IA. Tente preencher manualmente.");
+    } finally {
+      setIsAILoading(false);
+    }
+  };
+
   const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, STEPS.length - 1));
   const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 0));
 
@@ -219,6 +280,7 @@ export default function NewAgentPage() {
           system_prompt: selectedTemplate?.defaultData?.system_prompt || `Você é o ${formData.name}.`,
           personalities: formData.tone ? [formData.tone] : [],
           config: formData,
+          is_active: true,
           flow: { 
             nodes: nodes, 
             edges: baseEdges 
@@ -363,26 +425,49 @@ export default function NewAgentPage() {
                         </p>
                      </div>
                      
-                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {AGENT_TEMPLATES.slice(0, 6).map((template) => (
+                      <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 flex-1">
+                          {AGENT_TEMPLATES.slice(0, 6).map((template) => (
+                            <motion.div 
+                               key={template.id}
+                               whileHover={{ scale: 1.02, y: -2 }}
+                               onClick={() => {
+                                 setSelectedTemplate(template);
+                                 setFormData({ ...formData, category: template.id, name: template.name });
+                               }}
+                               className={`p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer flex flex-col items-center text-center relative overflow-hidden ${
+                                 formData.category === template.id 
+                                   ? 'bg-primary border-primary text-primary-foreground shadow-xl shadow-primary/20' 
+                                   : 'bg-card border-border hover:border-primary/50 text-muted-foreground hover:text-foreground'
+                               }`}
+                             >
+                              <div className="text-4xl mb-4">{template.icon}</div>
+                              <h4 className="font-bold text-lg tracking-tight mb-2 uppercase italic">{template.name}</h4>
+                            </motion.div>
+                          ))}
+                        </div>
+
+                        {formData.category && (
                           <motion.div 
-                             key={template.id}
-                             whileHover={{ scale: 1.02, y: -2 }}
-                             onClick={() => {
-                               setSelectedTemplate(template);
-                               setFormData({ ...formData, category: template.id, name: template.name });
-                             }}
-                             className={`p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer flex flex-col items-center text-center relative overflow-hidden ${
-                               formData.category === template.id 
-                                 ? 'bg-primary border-primary text-primary-foreground shadow-xl shadow-primary/20' 
-                                 : 'bg-card border-border hover:border-primary/50 text-muted-foreground hover:text-foreground'
-                             }`}
-                           >
-                            <div className="text-4xl mb-4">{template.icon}</div>
-                            <h4 className="font-bold text-lg tracking-tight mb-2 uppercase italic">{template.name}</h4>
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="bg-primary/10 border border-primary/30 p-8 rounded-[3rem] w-full md:w-64 text-center space-y-4"
+                          >
+                             <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-primary/20">
+                               <Sparkles className="w-6 h-6 text-white" />
+                             </div>
+                             <h4 className="text-sm font-black italic uppercase text-primary">Atalho Mágico</h4>
+                             <p className="text-[10px] text-muted-foreground font-medium italic">Deixe a IA preencher todos os detalhes conforme o nicho.</p>
+                             <button 
+                               onClick={() => handleAIFill('all')}
+                               disabled={isAILoading}
+                               className="w-full py-3 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-primary/30 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                             >
+                               {isAILoading ? "Gerando..." : "Mágica IA✨"}
+                             </button>
                           </motion.div>
-                        ))}
-                     </div>
+                        )}
+                      </div>
 
                      {formData.category && (
                        <motion.div 
@@ -391,7 +476,18 @@ export default function NewAgentPage() {
                          className="space-y-8 bg-muted p-10 rounded-[3rem] border border-border"
                        >
                          <div className="space-y-6">
-                            <h3 className="text-xl font-bold italic tracking-tight">O que sua IA fará? (Persona)</h3>
+                             <div className="flex justify-between items-center mb-4">
+                               <h3 className="text-xl font-bold italic tracking-tight">O que sua IA fará? (Persona)</h3>
+                               <button 
+                                 type="button"
+                                 onClick={() => handleAIFill('persona')}
+                                 disabled={isAILoading}
+                                 className="flex items-center gap-2 px-3 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-xl text-[9px] font-black uppercase tracking-widest transition-all disabled:opacity-50"
+                               >
+                                 {isAILoading ? <RefreshCcw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                 Sugerir com IA
+                               </button>
+                             </div>
                             <textarea 
                               rows={3}
                               className="w-full bg-background border border-border rounded-[2rem] p-6 text-sm outline-none focus:border-primary transition-all resize-none shadow-inner"
@@ -406,10 +502,20 @@ export default function NewAgentPage() {
                            <div className="grid gap-6">
                               {(WIZARD_QUESTIONS[formData.category] || WIZARD_QUESTIONS.default).map((q, i) => (
                                 <div key={`${formData.category}-q-${i}`} className="space-y-3">
-                                   <label className="text-[10px] font-black uppercase tracking-widest text-primary italic opacity-60">{q}</label>
+                                   <div className="flex justify-between items-center px-1">
+                                      <label className="text-[10px] font-black uppercase tracking-widest text-primary italic opacity-60">{q}</label>
+                                      <button 
+                                        type="button"
+                                        onClick={() => handleAIFill(`detail:${q}`)}
+                                        disabled={isAILoading}
+                                        className="text-[8px] font-black uppercase tracking-widest text-primary/40 hover:text-primary transition-all flex items-center gap-1"
+                                      >
+                                        <Sparkles className="w-2.5 h-2.5" /> Sugerir
+                                      </button>
+                                   </div>
                                    <input 
                                      type="text"
-                                     className="w-full bg-background border border-border rounded-2xl p-4 text-sm outline-none focus:border-primary transition-all"
+                                     value={formData.business_details[q] || ''} className="w-full bg-background border border-border rounded-2xl p-4 text-sm outline-none focus:border-primary transition-all shadow-sm"
                                      onChange={(e) => {
                                        const details = { ...formData.business_details, [q]: e.target.value };
                                        setFormData({...formData, business_details: details});
@@ -432,10 +538,21 @@ export default function NewAgentPage() {
                      </div>
 
                      <div className="bg-primary/5 border border-primary/20 p-8 rounded-[3rem] space-y-6 shadow-2xl">
-                        <div className="flex items-center gap-4 text-primary">
-                           <Wand2 className="w-6 h-6 animate-pulse" />
-                           <h3 className="font-black italic uppercase tracking-widest text-sm">Resumo do Planejamento</h3>
-                        </div>
+                        <div className="flex items-center justify-between text-primary">
+                            <div className="flex items-center gap-4">
+                               <Wand2 className="w-6 h-6 animate-pulse" />
+                               <h3 className="font-black italic uppercase tracking-widest text-sm">Resumo do Planejamento</h3>
+                            </div>
+                            <button 
+                              type="button"
+                              onClick={() => handleAIFill('system_prompt')}
+                              disabled={isAILoading}
+                              className="px-4 py-2 bg-primary text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center gap-2"
+                            >
+                              {isAILoading ? <RefreshCcw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                              Otimizar com IA
+                            </button>
+                         </div>
                         <div className="bg-background p-6 rounded-2xl border border-border space-y-4">
                            <p className="text-sm leading-relaxed text-foreground/80">
                              Baseado no nicho <strong>{formData.category}</strong> e na sua descrição, 
@@ -533,7 +650,7 @@ export default function NewAgentPage() {
                            Conteúdo Adicionado <div className="h-px flex-1 bg-muted" />
                         </h4>
                         <div className="bg-muted/30 rounded-2xl border border-border p-8 text-center">
-                           <Info className="w-5 h-5 text-muted-foreground/30 mx-auto mb-2" />
+                           <Info className="w-5 h-5 text-muted-foreground/60 mx-auto mb-2" />
                            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Nenhum conteúdo adicionado ainda</p>
                         </div>
                      </div>
@@ -567,13 +684,13 @@ export default function NewAgentPage() {
 
                      <div className="bg-background p-10 rounded-[3rem] border border-border text-left space-y-6 max-w-3xl mx-auto">
                         <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-primary italic">Configuração de Fluxo</h4>
-                        <div className="flex items-center gap-4 text-xs font-bold text-white/60">
+                        <div className="flex items-center gap-4 text-xs font-bold text-foreground/60">
                            <CheckCircle2 className="w-5 h-5 text-green-500" /> Triagem Automática Ativada
                         </div>
-                        <div className="flex items-center gap-4 text-xs font-bold text-white/60">
+                        <div className="flex items-center gap-4 text-xs font-bold text-foreground/60">
                            <CheckCircle2 className="w-5 h-5 text-green-500" /> Base de Conhecimento Vinculada
                         </div>
-                        <div className="flex items-center gap-4 text-xs font-bold text-white/60">
+                        <div className="flex items-center gap-4 text-xs font-bold text-foreground/60">
                            <CheckCircle2 className="w-5 h-5 text-green-500" /> Integração WhatsApp Pronta
                         </div>
                      </div>
@@ -587,7 +704,7 @@ export default function NewAgentPage() {
             <button 
               disabled={currentStep === 0}
               onClick={prevStep}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-[9px] italic text-muted-foreground hover:text-white transition-all disabled:opacity-0"
+              className="flex items-center gap-2 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-[9px] italic text-muted-foreground hover:opacity-80 transition-all disabled:opacity-0"
             >
               <ChevronLeft className="w-4 h-4" /> Anterior
             </button>
