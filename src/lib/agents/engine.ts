@@ -68,7 +68,9 @@ export class FlowEngine {
 
     let currentSession = session;
 
-    // 3. Validação de Início (Session vs Keyword)
+    // 3. Validação de Início (Session vs Keyword) e RESET
+    const isGreeting = ["ola", "oi", "menu", "ajuda", "bom dia", "boa tarde", "boa noite"].includes(text.toLowerCase().trim());
+    
     if (sessError || !session) {
       if (initialNode?.data?.triggerKeyword) {
         const keyword = initialNode.data.triggerKeyword.trim().toLowerCase();
@@ -78,6 +80,8 @@ export class FlowEngine {
         }
       }
 
+      await supabase.from('na_debug_logs').insert({ event_type: 'engine_debug', payload: { step: 'creating_new_session', jid: remoteJid } });
+
       // Criar nova sessão
       const { data: newSess, error: createError } = await supabase
         .from("na_chat_sessions")
@@ -86,19 +90,36 @@ export class FlowEngine {
           agent_id: agentId,
           remote_jid: remoteJid,
           messages: [{ role: "user", content: text }],
-          current_node_id: initialNode?.id
+          current_node_id: initialNode?.id,
+          status: 'active'
         })
         .select("*")
         .single();
       
-      if (createError) throw createError;
+      if (createError) {
+        await supabase.from('na_debug_logs').insert({ event_type: 'engine_debug', payload: { step: 'session_creation_failed', error: createError.message } });
+        throw createError;
+      }
       currentSession = newSess;
     } else {
+      await supabase.from('na_debug_logs').insert({ event_type: 'engine_debug', payload: { step: 'updating_session', session_id: session.id, current_node: session.current_node_id, is_greeting: isGreeting } });
+
+      // SE for saudação e estiver travado em transfer, volta pro início
+      if (isGreeting && (session.current_node_id === 'transfer' || session.status === 'human_needed')) {
+         session.current_node_id = initialNode?.id || null;
+         session.status = 'active';
+      }
+
       // Atualizar histórico da sessão existente
       const newMessages = [...(session.messages || []), { role: "user", content: text }];
       await supabase
         .from("na_chat_sessions")
-        .update({ messages: newMessages, last_interaction: new Date().toISOString() })
+        .update({ 
+          messages: newMessages, 
+          last_interaction: new Date().toISOString(),
+          current_node_id: session.current_node_id,
+          status: session.status || 'active'
+        })
         .eq("id", session.id);
       currentSession.messages = newMessages;
     }
@@ -109,6 +130,8 @@ export class FlowEngine {
       if (!initialNode) throw new Error("Fluxo sem nó inicial");
       currentNodeId = initialNode.id;
     }
+
+    await supabase.from('na_debug_logs').insert({ event_type: 'engine_debug', payload: { step: 'executing_step', node_id: currentNodeId } });
 
     // 5. Executar
     await this.executeStep(
