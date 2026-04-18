@@ -58,6 +58,14 @@ export class FlowEngine {
     const flow = (agent.flow as FlowData) || { nodes: [], edges: [] };
     const initialNode = flow.nodes.find((n) => n.type === "initial");
 
+    // 1.5 Buscar Cliente por Telefone para Personalização
+    const phone = remoteJid.replace("@s.whatsapp.net", "");
+    const { data: client } = await supabase
+      .from("na_clients")
+      .select("full_name")
+      .eq("phone_primary", phone)
+      .maybeSingle();
+
     // 2. Buscar Sessão Ativa
     const { data: session, error: sessError } = await supabase
       .from("na_chat_sessions")
@@ -199,6 +207,7 @@ export class FlowEngine {
                   { role: "system", content: agent.system_prompt || "Você é um assistente prestativo." },
                   { role: "system", content: `IDENTIDADE: Seu nome é ${agent.name}.` },
                   { role: "system", content: `CONTEXTO DE NEGÓCIO (SERVIÇOS/REGRAS): ${businessContext}` },
+                  { role: "system", content: `CLIENTE: Você está falando com ${session.context?.customer_name || "um novo cliente"}.` },
                   { role: "system", content: `Instrução do Nó Atual: ${prompt}` },
                   ...session.messages.slice(-5)
                 ],
@@ -402,16 +411,29 @@ export class FlowEngine {
                 }
               }
 
-              // 2. Extração de Data/Hora
+              // 2. Extração de Data/Hora e NOME
               const aiRes = await this.openai.chat.completions.create({
                 model: "gpt-3.5-turbo",
-                messages: [{ role: "system", content: `Extraia JSON {date, time} para "${userInput}". Hoje=${dateContext}.` }],
+                messages: [{ role: "system", content: `Extraia JSON {date, time, name} para "${userInput}". Hoje=${dateContext}. Se o nome não estiver claro, retorne null no campo name.` }],
                 response_format: { type: "json_object" }
               });
 
               const extracted = JSON.parse(aiRes.choices[0]?.message?.content || "{}");
               
+              if (extracted.name && !context.customer_name) {
+                 context.customer_name = extracted.name;
+              }
+
               if (extracted.date && extracted.time) {
+                  // 2.1 Verificar se é DOMINGO
+                  const bookDate = new Date(`${extracted.date}T12:00:00`);
+                  if (bookDate.getDay() === 0) {
+                      const msg = "Puxa, infelizmente não abrimos aos domingos. Poderia escolher um dia de segunda a sábado?";
+                      await this.sendWhatsApp(instanceName, session.remote_jid, msg, evolutionApiUrl, evolutionApiKey);
+                      await this.updateSessionContext(session.id, context);
+                      return;
+                  }
+
                   // 3. Validação de Horário de Funcionamento (Business Rules)
                   const workStart = bookingConfig.workStart || '09:00';
                   const workEnd = bookingConfig.workEnd || '18:00';
@@ -440,36 +462,43 @@ export class FlowEngine {
                       }
                   }
 
-                  // 5. Salvar Agendamento
-                  const saveInternal = bookingConfig.bookingDest !== 'google';
-                  const syncGoogle = bookingConfig.bookingDest === 'google';
-                  const companyName = bookingConfig.companyName || 'nossa unidade';
-
-                  if (saveInternal) {
-                      const { error: bookErr } = await supabase.from("na_bookings").insert({
-                          company_id: session.company_id,
-                          service_id: context.selected_service_id,
-                          date: extracted.date,
-                          time: extracted.time,
-                          status: 'confirmed'
-                      });
-                      if (bookErr) throw bookErr;
+                  // 5. Perguntar o NOME se ainda não tivermos
+                  if (!context.customer_name) {
+                     const msg = "Com quem eu falo? Por favor, me diga seu nome para eu registrar no agendamento.";
+                     await this.sendWhatsApp(instanceName, session.remote_jid, msg, evolutionApiUrl, evolutionApiKey);
+                     await this.updateSessionContext(session.id, context);
+                     return;
                   }
 
-                  if (syncGoogle) {
-                      await this.syncWithGoogleCalendar(session.company_id, {
-                        summary: `${context.selected_service_name} - ${companyName}`,
-                        start: `${extracted.date}T${extracted.time}:00`,
-                        description: `Agendado via WhatsApp (${session.remote_jid})`
-                      });
+                  // 6. Salvar Agendamento
+                  const { data: booking, error: bookErr } = await supabase
+                    .from("na_bookings")
+                    .insert({
+                        company_id: session.company_id,
+                        agent_id: session.agent_id,
+                        client_name: context.customer_name,
+                        client_phone: session.remote_jid.replace("@s.whatsapp.net", ""),
+                        service_id: context.selected_service_id,
+                        date: extracted.date,
+                        time: extracted.time,
+                        status: 'confirmed'
+                    })
+                    .select('*, na_services(name)')
+                    .single();
+
+                  if (bookErr) {
+                      console.error("[FLOW ENGINE] Erro ao salvar agendamento:", bookErr);
+                      throw bookErr;
                   }
 
-                  const [year, month, day] = extracted.date.split('-');
-                  const msg = `✅ *Confirmado!* Seu agendamento de *${context.selected_service_name}* na *${companyName}* foi realizado com sucesso para o dia ${day}/${month}/${year} às ${extracted.time}.`;
-                  await this.sendWhatsApp(instanceName, session.remote_jid, msg, evolutionApiUrl, evolutionApiKey);
+                  const confirmMsg = `Perfeito, ${context.customer_name}! Seu agendamento para *${booking.na_services?.name}* foi confirmado para o dia ${extracted.date} às ${extracted.time}. Te esperamos lá!`;
+                  await this.sendWhatsApp(instanceName, session.remote_jid, confirmMsg, evolutionApiUrl, evolutionApiKey);
                   
+                  // Resetar contexto após sucesso
+                  await this.updateSessionContext(session.id, {});
                   const nextNodeId = this.getNextNodeId(nodeId, flow);
-                  await this.updateSession(session.id, nextNodeId || nodeId, msg, {}); 
+                  await this.updateSession(session.id, nextNodeId || nodeId, confirmMsg);
+                  return;
               } else {
                   const msg = `Para qual dia e horário você prefere o seu *${context.selected_service_name}*?`;
                   await this.sendWhatsApp(instanceName, session.remote_jid, msg, evolutionApiUrl, evolutionApiKey);

@@ -93,7 +93,6 @@ export default function AgendaPage() {
           .from("na_bookings")
           .select(`
             *,
-            na_leads (name, phone),
             na_services (name, price, duration_minutes),
             na_barbers (name)
           `)
@@ -292,7 +291,7 @@ export default function AgendaPage() {
                                     <p className="text-[7px] font-black text-primary uppercase tracking-tighter truncate">{b.na_services?.name || 'Serviço'}</p>
                                     <Clock className="w-2.5 h-2.5 text-primary/40 shrink-0" />
                                   </div>
-                                  <p className="text-[10px] font-bold text-foreground tracking-tight truncate leading-none mb-1">{b.na_leads?.name || 'Cliente'}</p>
+                                  <p className="text-[10px] font-bold text-foreground tracking-tight truncate leading-none mb-1">{b.client_name || b.client_phone || 'Cliente'}</p>
                                   <p className="text-[7px] font-black text-muted-foreground uppercase tracking-widest truncate">{b.na_barbers?.name || 'Equipe'}</p>
                                </motion.div>
                              ))}
