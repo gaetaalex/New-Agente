@@ -204,6 +204,31 @@ export default function NewAgentPage() {
   const handleSave = async () => {
     setLoading(true);
     try {
+      let finalSystemPrompt = formData.system_prompt;
+      let finalBusinessDetails = formData.business_details;
+
+      // --- EXTRAÇÃO SILENCIOSA (Modo Prompt) ---
+      if (builderMode === 'prompt') {
+        try {
+          const suggestRes = await fetch("/api/ai/suggest", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              niche: formData.category,
+              agentName: formData.name,
+              userPrompt: formData.system_prompt
+            }),
+          });
+          if (suggestRes.ok) {
+            const suggestData = await suggestRes.json();
+            finalSystemPrompt = suggestData.system_prompt || finalSystemPrompt;
+            finalBusinessDetails = { ...finalBusinessDetails, ...suggestData.business_details };
+          }
+        } catch (e) {
+          console.warn("Silent extraction failed, continuing with raw prompt:", e);
+        }
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       const user = session?.user;
       
@@ -258,7 +283,8 @@ export default function NewAgentPage() {
               label: 'Cérebro do Agente', 
               sublabel: 'AÇÃO • AI RESPONSE',
               preview: `Olá! Eu sou ${formData.name}. Como posso ajudar?`,
-              prompt: formData.system_prompt,
+              prompt: finalSystemPrompt,
+              business_details: finalBusinessDetails,
               type: 'AI Response', nodeId: 'ai'
             }
           },
@@ -303,8 +329,9 @@ export default function NewAgentPage() {
               data: {
                 ...node.data,
                 preview: `Olá! Sou a ${formData.name}. Como posso ajudar?`,
-                prompt: formData.system_prompt,
-                systemMessage: formData.system_prompt
+                prompt: finalSystemPrompt,
+                systemMessage: finalSystemPrompt,
+                business_details: finalBusinessDetails
               }
             };
           }
@@ -313,24 +340,22 @@ export default function NewAgentPage() {
         edges = baseEdges;
       }
 
-      const { error: saveError } = await supabase
+      const { data: agentData, error: agentError } = await supabase
         .from("na_agents")
-        .insert([{
+        .insert({
           company_id: companyId,
           name: formData.name,
           role: selectedTemplate?.defaultData?.role || 'Assistente',
           field: selectedTemplate?.defaultData?.field || formData.category,
-          system_prompt: formData.system_prompt || `Você é o ${formData.name}.`,
+          system_prompt: finalSystemPrompt,
+          business_details: finalBusinessDetails,
           personalities: formData.tone ? [formData.tone] : [],
           config: formData,
           is_active: true,
-          flow: { 
-            nodes: nodes, 
-            edges: edges 
-          }
-        }]);
+          flow: { nodes, edges }
+        }).select().single();
 
-      if (saveError) throw saveError;
+      if (agentError) throw agentError;
       window.location.href = "/agents";
     } catch (err: any) {
       console.error("ERRO AO SALVAR:", err);

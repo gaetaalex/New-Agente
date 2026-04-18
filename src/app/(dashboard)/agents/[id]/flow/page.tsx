@@ -140,13 +140,13 @@ const ActionNode = ({ data, selected }: any) => {
              <span className="font-black text-[15px] text-foreground block leading-tight tracking-tight italic">{data.label || 'Ação'}</span>
              <span className={cn(
                 "text-[9px] font-black uppercase tracking-[0.2em] opacity-80 mt-1 block",
-                data.nodeId === 'booking' ? 'text-emerald-500' : 
+                data.nodeId === 'booking' || data.nodeId === 'availability' ? 'text-emerald-500' : 
                 data.nodeId === 'n8n' ? 'text-[#ff6d5a]' : 
                 data.nodeId === 'transfer' ? 'text-red-500' :
                 data.nodeId === 'link' ? 'text-blue-500' :
                 'text-primary'
               )}>
-                 {data.nodeId === 'booking' ? `Capacidade • Scheduling` : 
+                 {data.nodeId === 'booking' || data.nodeId === 'availability' ? `Capacidade • Scheduling` : 
                   data.nodeId === 'n8n' ? `Integração • Automation` :
                   data.nodeId === 'transfer' ? `Ação • Transferência` :
                   data.nodeId === 'link' ? `Ação • Enviar Link` :
@@ -161,7 +161,7 @@ const ActionNode = ({ data, selected }: any) => {
       </div>
 
       <div className="p-4 bg-muted/30 rounded-3xl border border-border text-[11px] text-muted-foreground leading-relaxed min-h-[60px] flex flex-col justify-center italic">
-         {data.nodeId === 'booking' ? (
+         {data.nodeId === 'booking' || data.nodeId === 'availability' ? (
            <div className="space-y-1">
               <p className="font-bold text-foreground/70">Destino: <span className="text-emerald-500">{data.bookingDest === 'google' ? 'Google Agenda' : 'Agenda Interna'}</span></p>
               <p className="text-[10px] opacity-60 text-muted-foreground">Horários: {data.hoursCount || 5} • {data.maxDays || 30} dias</p>
@@ -808,7 +808,7 @@ function FlowEditor({ params }: { params: Promise<{ id: string }> }) {
                                        </div>
                                      )}
 
-                                       {(currentNode.data.nodeId === 'booking') && (
+                                       {(currentNode.data.nodeId === 'booking' || currentNode.data.nodeId === 'availability') && (
                                       <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                                         <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-[2rem] flex items-center gap-4">
                                            <div className="w-10 h-10 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">

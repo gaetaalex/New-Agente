@@ -45,7 +45,7 @@ export class FlowEngine {
     // 1. Buscar Agente e Flow FIRST
     const { data: agent, error: agentError } = await supabase
       .from("na_agents")
-      .select("flow, system_prompt, is_active, config, name")
+      .select("flow, system_prompt, is_active, config, name, business_details")
       .eq("id", agentId)
       .single();
 
@@ -226,7 +226,7 @@ export class FlowEngine {
         if (actionType === "availability" || actionType === "faq" || actionType === "lead") {
           // Estes nós usam IA para gerar a resposta com base no contexto específico do nó
           const prompt = node.data.prompt || node.data.message || (actionType === "availability" ? "Verifique os horários disponíveis" : "Responda à dúvida do cliente");
-          const businessContext = JSON.stringify(agent.config?.business_details || {});
+          const businessContext = JSON.stringify(agent.business_details || agent.config?.business_details || {});
 
           let responseText = "";
           try {
