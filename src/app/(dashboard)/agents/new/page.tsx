@@ -140,28 +140,35 @@ export default function NewAgentPage() {
 
     setIsAILoading(true);
     try {
-      const questions = WIZARD_QUESTIONS[formData.category] || WIZARD_QUESTIONS.default;
-      
       // Se for um campo específico (ex: detail:Como o paciente...)
       const isSpecificField = field?.startsWith('detail:');
       const targetDetail = isSpecificField ? field?.split('detail:')[1] : null;
 
-      const response = await fetch('/api/ai/suggest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/ai/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           niche: formData.category,
-          questions: targetDetail ? [targetDetail] : questions,
           agentName: formData.name,
-          specificField: targetDetail ? 'business_details' : field
-        })
+          specificField: targetDetail ? 'business_details' : (builderMode === 'prompt' ? null : field),
+          userPrompt: builderMode === 'prompt' ? formData.system_prompt : null,
+          questions: builderMode === 'prompt' ? [] : (targetDetail ? [targetDetail] : (selectedTemplate?.questions || WIZARD_QUESTIONS[formData.category] || WIZARD_QUESTIONS.default))
+        }),
       });
 
       if (!response.ok) throw new Error('Erro na sugestão da IA');
-      
       const data = await response.json();
 
-      if (targetDetail) {
+      if (builderMode === 'prompt') {
+        // No modo prompt, a IA extrai TUDO e preenche globalmente
+        setFormData((prev: any) => ({
+          ...prev,
+          persona: data.persona || prev.persona,
+          system_prompt: data.system_prompt || prev.system_prompt,
+          business_details: { ...prev.business_details, ...data.business_details }
+        }));
+        alert("✨ Mágica concluída! Seus serviços foram extraídos e o script foi otimizado.");
+      } else if (targetDetail) {
         // Atualizar apenas o detalhe específico
         setFormData((prev: any) => ({
           ...prev,
@@ -175,7 +182,7 @@ export default function NewAgentPage() {
       } else if (field === 'system_prompt') {
         setFormData((prev: any) => ({ ...prev, system_prompt: data.system_prompt }));
       } else {
-        // Preenchimento global
+        // Preenchimento global (Wizard padrão)
         setFormData((prev: any) => ({
           ...prev,
           persona: data.persona || prev.persona,

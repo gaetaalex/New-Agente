@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-    const { niche, questions, agentName, specificField } = await req.json();
+    const { niche, questions, agentName, specificField, userPrompt } = await req.json();
 
     if (!niche) {
       return NextResponse.json({ error: 'Nicho é obrigatório' }, { status: 400 });
@@ -15,7 +15,29 @@ export async function POST(req: Request) {
 
     let prompt = "";
     
-    if (specificField === 'business_details' && questions?.length === 1) {
+    if (userPrompt) {
+      prompt = `
+        Você é um engenheiro de IA especializado em configurar agentes de WhatsApp.
+        O usuário forneceu a seguinte descrição/instruções para o agente dele:
+        "${userPrompt}"
+
+        Nicho: "${niche}"
+        Nome do Agente: "${agentName || 'Atendente'}"
+
+        Sua tarefa é extrair e estruturar TODAS as informações úteis desse texto.
+        
+        Retorne um objeto JSON com:
+        1. "system_prompt": Instrução mestre otimizada para a IA (remova redundâncias e deixe profissional).
+        2. "business_details": Um objeto contendo:
+           - "servicos": Uma lista formatada de serviços e preços.
+           - "horarios": Horários de funcionamento mencionados.
+           - "regras_agendamento": Políticas de cancelamento ou regras de chegada.
+           - Outras chaves que considerar importantes no texto.
+        3. "persona": Uma descrição curta do tom de voz.
+
+        Responda apenas com o JSON.
+      `;
+    } else if (specificField === 'business_details' && questions?.length === 1) {
       prompt = `
         Você é um assistente de IA focado em negócios para o nicho de "${niche}".
         Para a pergunta: "${questions[0]}", sugira uma resposta realista e profissional.
