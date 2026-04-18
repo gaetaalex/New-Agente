@@ -269,6 +269,21 @@ function FlowEditor({ params }: { params: Promise<{ id: string }> }) {
     (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
     []
   );
+
+  const onEdgesDelete = useCallback((deletedEdges: Edge[]) => {
+    setEdges((eds) => eds.filter((edge) => !deletedEdges.find((de) => de.id === edge.id)));
+  }, []);
+
+  const onEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      event.preventDefault();
+      if (confirm('Deseja excluir esta conexão?')) {
+        setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+      }
+    },
+    []
+  );
+
   const onConnect: OnConnect = useCallback(
     (params) => setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: '#3b82f6', strokeWidth: 2 } }, eds)),
     []
@@ -307,7 +322,9 @@ function FlowEditor({ params }: { params: Promise<{ id: string }> }) {
                  (nodeId === 'transfer' ? 'bg-red-500' :
                  (nodeId === 'link' ? 'bg-blue-500' :
                  (nodeId === 'pay' ? 'bg-sky-500' : 
-                 (nodeId === 'n8n' ? 'bg-[#ff6d5a]' : 'bg-primary')))))
+                 (nodeId === 'lead' ? 'bg-amber-500' :
+                 (nodeId === 'n8n' ? 'bg-[#ff6d5a]' : 'bg-primary')))))),
+          fields: nodeId === 'lead' ? ['Nome', 'Telefone'] : []
         },
       };
 
@@ -564,6 +581,8 @@ function FlowEditor({ params }: { params: Promise<{ id: string }> }) {
               onDrop={onDrop}
               nodeTypes={nodeTypes}
               onNodesDelete={onNodesDelete}
+              onEdgesDelete={onEdgesDelete}
+              onEdgeContextMenu={onEdgeContextMenu}
               fitView
               colorMode="light"
               className="bg-background"
@@ -904,14 +923,35 @@ function FlowEditor({ params }: { params: Promise<{ id: string }> }) {
                                         <div className="space-y-2">
                                            <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground block ml-2">Campos para Capturar</label>
                                            <div className="grid grid-cols-1 gap-2">
-                                              {['Nome', 'Email', 'Telefone', 'Empresa', 'Interesse'].map(f => (
-                                                <div key={f} className="flex items-center justify-between p-3 bg-muted/30 border border-border rounded-xl">
-                                                  <label className="text-[10px] font-bold text-foreground/60">{f}</label>
-                                                  <div className="w-6 h-6 rounded-md bg-background border border-border flex items-center justify-center">
-                                                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                                                  </div>
-                                                </div>
-                                              ))}
+                                              {['Nome', 'Email', 'Telefone', 'Empresa', 'Interesse'].map(f => {
+                                                const isSelected = (currentNode.data.fields as string[] || []).includes(f);
+                                                return (
+                                                 <button 
+                                                   key={f} 
+                                                   type="button"
+                                                   onClick={() => {
+                                                     const currentFields = (currentNode.data.fields as string[] || []);
+                                                     const newFields = currentFields.includes(f) 
+                                                       ? currentFields.filter((field: string) => field !== f)
+                                                       : [...currentFields, f];
+                                                     
+                                                     setNodes(nds => nds.map(n => n.id === currentNode.id ? { ...n, data: { ...n.data, fields: newFields } } : n));
+                                                   }}
+                                                   className={cn(
+                                                     "flex items-center justify-between p-3 border rounded-xl transition-all outline-none",
+                                                     isSelected ? "bg-amber-500/10 border-amber-500/40" : "bg-muted/30 border-border opacity-50"
+                                                   )}
+                                                 >
+                                                   <span className={cn("text-[10px] font-bold", isSelected ? "text-amber-600" : "text-foreground/60")}>{f}</span>
+                                                   <div className={cn(
+                                                     "w-5 h-5 rounded-md border flex items-center justify-center transition-all",
+                                                     isSelected ? "bg-amber-500 border-amber-600 shadow-lg shadow-amber-500/20" : "bg-background border-border"
+                                                   )}>
+                                                     {isSelected && <div className="w-2 h-2 bg-white rounded-full shadow-inner" />}
+                                                   </div>
+                                                 </button>
+                                                );
+                                              })}
                                            </div>
                                         </div>
                                       </div>

@@ -507,6 +507,57 @@ export class FlowEngine {
             } catch (bookErr: any) {
                console.error("[FLOW ENGINE] Erro no Nó Booking:", bookErr);
             }
+        } else if (actionType === "lead") {
+            try {
+              const context = session.context || {};
+              const leadConfig = node.data || {};
+              const requiredFields = leadConfig.fields || ['Nome', 'Telefone'];
+              
+              // 1. Verificar quais campos já temos
+              const missingFields = requiredFields.filter((f: string) => !context[`lead_${f.toLowerCase()}`]);
+
+              if (missingFields.length > 0) {
+                 const currentField = missingFields[0];
+                 
+                 // Tentar extrair o campo da mensagem atual
+                 const aiRes = await this.openai.chat.completions.create({
+                   model: "gpt-3.5-turbo",
+                   messages: [{ role: "system", content: `Extraia o campo "${currentField}" da mensagem: "${userInput}". Retorne apenas o valor ou "null" se não encontrar.` }]
+                 });
+                 
+                 const extractedValue = aiRes.choices[0]?.message?.content?.trim();
+                 if (extractedValue && extractedValue.toLowerCase() !== "null") {
+                    context[`lead_${currentField.toLowerCase()}`] = extractedValue;
+                    
+                    // Se ainda faltar campos, chamamos recursivamente para o próximo ou prosseguimos
+                    const nextMissing = requiredFields.filter((f: string) => !context[`lead_${f.toLowerCase()}`]);
+                    if (nextMissing.length > 0) {
+                       const nextField = nextMissing[0];
+                       const promptMsg = `Ótimo! Agora, poderia me informar o seu *${nextField}*?`;
+                       await this.sendWhatsApp(instanceName, session.remote_jid, promptMsg, evolutionApiUrl, evolutionApiKey);
+                       await this.updateSessionContext(session.id, context);
+                       return;
+                    }
+                 } else {
+                    // Solicitar o campo
+                    const promptMsg = `Para prosseguirmos, poderia me informar o seu *${currentField}*?`;
+                    await this.sendWhatsApp(instanceName, session.remote_jid, promptMsg, evolutionApiUrl, evolutionApiKey);
+                    await this.updateSessionContext(session.id, context);
+                    return;
+                 }
+              }
+
+              // 2. Todos os campos capturados
+              const successMsg = leadConfig.successMessage || "Ótimo! Recebemos seus dados e entraremos em contato em breve.";
+              await this.sendWhatsApp(instanceName, session.remote_jid, successMsg, evolutionApiUrl, evolutionApiKey);
+
+              const nextNodeId = this.getNextNodeId(nodeId, flow);
+              await this.updateSession(session.id, nextNodeId || nodeId, successMsg, {});
+              return;
+
+            } catch (err) {
+               console.error("[FLOW ENGINE] Erro no Nó Lead:", err);
+            }
         }
         break;
       }
