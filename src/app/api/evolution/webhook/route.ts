@@ -84,68 +84,27 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // 3. Processar mensagem com Inteligência Artificial
+    // 3. Processar mensagem com o Motor de Fluxos (FlowEngine)
     // ==========================================
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('[WEBHOOK ERRO] OPENAI_API_KEY ausente.');
-      return NextResponse.json({ error: 'OPENAI_API_KEY não configurada' }, { status: 500 });
-    }
+    const { FlowEngine } = require('@/lib/agents/engine');
+    const engine = new FlowEngine();
 
-    let systemInstruction = agent.system_prompt || `Você é ${agent.name}. Responda amigavelmente.`;
-
-    const aiResponse = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: systemInstruction },
-        { role: 'user', content: textMessage }
-      ],
-      temperature: 0.7,
-      max_tokens: 500,
-    });
-
-    const answer = aiResponse.choices[0]?.message?.content || 'Desculpe, estou enfrentando problemas técnicos agora.';
-
-    // ==========================================
-    // 4. Enviar a resposta de volta para o Evolution API
-    // ==========================================
-    console.log(`[EVOLUTION SEND] Enviando resposta para: ${remoteJid}`);
-    
-    // Na Evolution API v1.x e v2.x, o endpoint costuma ser POST /message/sendText/{instance}
-    // E o body: { number: '123456789', text: '...' } 
-    // remoteJid costuma vir como '5511999999999@s.whatsapp.net', tiramos o sufixo
-    const toPhone = remoteJid.replace('@s.whatsapp.net', '');
-
-    const sendRes = await fetch(`${evolutionApiUrl}/message/sendText/${instanceName}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': evolutionApiKey,
-        'ngrok-skip-browser-warning': 'true',
-        'Bypass-Tunnel-Reminder': 'true'
-      },
-      body: JSON.stringify({
-        number: toPhone,
-        options: {
-           delay: 1500, // simula digitação (opcional dependendo da config)
-           presence: 'composing' // status "digitando..."
-        },
-        textMessage: {
-           text: answer
-        }
-      })
-    });
-
-    if (!sendRes.ok) {
-      const errTxt = await sendRes.text();
-      console.error('[EVOLUTION SEND ERRO] Falha ao enviar:', errTxt);
-      return NextResponse.json({ error: 'Erro ao enviar resposta via whatsapp' }, { status: 500 });
-    }
+    await engine.processMessage(
+      companyId,
+      agent.id,
+      remoteJid,
+      textMessage,
+      instanceName,
+      evolutionApiUrl,
+      evolutionApiKey
+    );
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Resposta enviada com sucesso',
+      message: 'Mensagem processada pelo Motor de Fluxos',
       agent: agent.name
     });
+
 
   } catch (error: any) {
     console.error('[WEBHOOK EXCEPTION]', error);
