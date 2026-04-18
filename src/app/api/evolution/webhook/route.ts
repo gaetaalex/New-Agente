@@ -54,16 +54,20 @@ export async function POST(req: Request) {
        return NextResponse.json({ message: 'Instância não encontrada no banco' });
     }
 
-    const { data: agent } = await supabase
+    const { data: agent, error: agentError } = await supabase
       .from('na_agents')
       .select('*')
       .eq('company_id', integration.company_id)
       .eq('is_active', true)
-      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-
-    if (!agent) {
+    
+    if (agentError || !agent) {
+       await supabase.from('na_debug_logs').insert({
+          event_type: 'webhook_step',
+          payload: { step: 'error_no_agent', company_id: integration.company_id, error: agentError?.message }
+       });
        return NextResponse.json({ message: 'Agente não configurado' });
     }
 
